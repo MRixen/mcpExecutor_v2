@@ -223,12 +223,9 @@ void loop()
 			if (debugMode) Serial.println("Load tx buffer.");
 			mcp2515_load_tx_buffer0(ReadBuf, MESSAGE_SIZE_ADXL, EXECUTOR_ID_LOW, EXECUTOR_ID_HIGH);
 			mcp2515_execute_write_command(CONTROL_REGISTER_CANINTF, CONTROL_REGISTER_CANINTF_VALUE_RESET_ALL_IF, CS_PIN_MCP2515);
-			startTimer = millis();
 			while ((analogRead(REQUEST_DATA)) > 500)
 			{
 			}
-			Serial.println("while: ");
-			Serial.println(millis() - startTimer);
 			digitalWrite(REQUEST_DATA_HANDSHAKE, 0);
 			if (debugMode) Serial.println("Finished waiting.");
 		}
@@ -413,7 +410,7 @@ byte mcp2515_execute_read_command(byte registerToRead, int cs_pin)
 	// Disable device
 	digitalWrite(cs_pin, HIGH);
 
-	delay(25);
+	delay(1);
 
 	mcp2515_execute_write_command(CONTROL_REGISTER_CANINTF, CONTROL_REGISTER_CANINTF_VALUE_RESET_ALL_IF, CS_PIN_MCP2515);		
 
@@ -476,7 +473,7 @@ bool getAdxlData() {
 }
 
 void mcp2515_load_tx_buffer0(byte messageData[], byte messageSize, byte identifierLow, byte identifierHigh) {
-	long startTime = millis();
+	//long startTime = millis();
 
 	switchDevice(MCP2515);
 
@@ -488,8 +485,8 @@ void mcp2515_load_tx_buffer0(byte messageData[], byte messageSize, byte identifi
 	// Send message
 	mcp2515_execute_rts_command(0);
 
-	Serial.println("mcp2515_load_tx_buffer0: ");
-	Serial.println(millis() - startTime);
+	//Serial.println("mcp2515_load_tx_buffer0: ");
+	//Serial.println(millis() - startTime);
 }
 
 void mcp2515_init_tx_buffer0(byte identifierLow, byte identifierHigh, byte messageSize) {
@@ -516,7 +513,7 @@ void writeToSpi(byte address, byte data, int cs_pin) {
 
 void mcp2515_execute_write_command(byte address, byte data, int cs_pin)
 {
-	long startTime = millis();
+	//long startTime = millis();
 
 	digitalWrite(cs_pin, LOW); // Enable device
 	SPI.transfer(SPI_INSTRUCTION_WRITE); // Write spi instruction write  
@@ -524,8 +521,8 @@ void mcp2515_execute_write_command(byte address, byte data, int cs_pin)
 	SPI.transfer(data);
 	digitalWrite(cs_pin, HIGH); // Disable device
 
-	Serial.println("mcp2515_execute_write_command: ");
-	Serial.println(millis() - startTime);
+	//Serial.println("mcp2515_execute_write_command: ");
+	//Serial.println(millis() - startTime);
 }
 
 void mcp2515_execute_rts_command(int bufferId)
