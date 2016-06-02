@@ -6,6 +6,7 @@ const int CS_PIN_ADXL = 10;
 const int CS_PIN_MCP2515 = 9;
 const int MCP2515_PIN_INTE_SENDER = 8;
 const int REQUEST_DATA = A0;
+//const int REQUEST_DATA = 4;
 const int REQUEST_DATA_HANDSHAKE = 7;
 
 // CONTROL REGISTER
@@ -70,18 +71,10 @@ const byte CONTROL_REGISTER_TXB0CTRL_VALUE = 0x00;
 const byte CONTROL_REGISTER_RXB0CTRL_VALUE = 0x03;
 const byte CONTROL_REGISTER_RXB1CTRL_VALUE = 0x03;
 
-// Set values for bit timing
-// Fosc = 8Mhz
-// Tosc = 125ns
-const byte CONTROL_REGISTER_VALUE_CNF1 = 0x00; // Baud rate prescaler calculated with application (Fosc = 8Mhz and CANspeed = 125kHz)
+const byte CONTROL_REGISTER_VALUE_CNF1 = 0x02; // Baud rate prescaler calculated with application (Fosc = 8Mhz and CANspeed = 125kHz)
 const byte CONTROL_REGISTER_VALUE_CNF2 = 0x90; // BTLMODE = 1 (PHaseSegment 2 is configured with CNF 3) and PhaseSegment 1 = 8xTQ (7+1)
 const byte CONTROL_REGISTER_VALUE_CNF3 = 0x02; // Set PhaseSegment 2 = 6xTQ (5+1)
 
-											   // CNF1 = 0x03, CNF2 = 0x90, CNF3 = 0x02
-											   // CNF1 = 0x01, CNF2 = 0xB8, CNF3 = 0x05
-											   // CNF1 = 0x01, CNF2 = 0x90, CNF3 = 0x02
-
-											   // Set values for mode control
 const byte CONTROL_REGISTER_CANCTRL_NORMAL_MODE = 0x00;
 const byte CONTROL_REGISTER_CANCTRL_SLEEP_MODE = 0x20;
 const byte CONTROL_REGISTER_CANCTRL_LOOPBACK_MODE = 0x40;
@@ -179,6 +172,13 @@ byte messageData[] = { 0, 0 };
 
 void setup()
 {
+	// Init variables
+	firstStart = true;
+	startSequenceIsActive = false;
+
+	// USER CONFIGURATION
+	debugMode = false;
+
 	// Define I/Os
 	pinMode(CS_PIN_ADXL, OUTPUT);
 	pinMode(CS_PIN_MCP2515, OUTPUT); // Set as input to enable pull up resistor. It's neccessary because the ss line is defined at pin 10 + 9
@@ -199,72 +199,56 @@ void setup()
 	initAdxl();
 	initMcp2515();
 
-	// Init variables
-	debugMode = false;
-	firstStart = true;
-	startSequenceIsActive = false;
-
 	// Give time to set up
 	delay(100);
 
 	// Start timer to measure the program execution
 	errorTimerValue = millis();
-
-	
 }
 
 void loop()
 {
+	// !!! NOTE -> You need to uncomment the following when there is a solution for the problem:
+	// Cant receive the whole stop sequence from server (txb0ctrl bit is 56 and 24 -> Error while sending...)
+	//// Wait for start or stop sequence
+	//if (((digitalRead(MCP2515_PIN_INTE_SENDER)) == 0))
+	//{
+	//	// Set to false that we can 
+	//	startSequenceIsActive = false;
+
+	//	byte retVal[2];
+	//	byte retVal2[2];
+	//	byte rxStateIst;
+	//	byte rxStateSoll = 0x03;
+
+	//	rxStateIst = mcp2515_execute_read_state_command(CS_PIN_MCP2515);
+
+	//	// Read message to check if it is a start sequence
+	//	if ((rxStateIst & rxStateSoll) == 1) for (int i = 0; i < 2; i++) retVal[i] = mcp2515_execute_read_command(REGISTER_RXB0Dx[i], CS_PIN_MCP2515);
+	//	else if ((rxStateIst & rxStateSoll) == 2) for (int i = 0; i < 2; i++) retVal[i] = mcp2515_execute_read_command(REGISTER_RXB1Dx[i], CS_PIN_MCP2515);
+
+	//	// Check message content
+	//	if ((retVal[0] == 0xFF) && (retVal[1] == 0xFF)) {
+	//		// Start sequence received
+	//		if (debugMode) Serial.println("Receive start sequence. Send handshake.");
+	//		mcp2515_load_tx_buffer0(retVal, 0x02, EXECUTOR_ID_LOW, EXECUTOR_ID_HIGH);
+	//		startSequenceIsActive = true;
+	//	}
+	//	else if ((retVal[0] == 0x80) && (retVal[1] == 0x80)) {
+	//		// Stop sequence received
+	//		if (debugMode) Serial.println("Receive stop sequence. Send handshake.");
+	//		mcp2515_load_tx_buffer0(retVal, 0x02, EXECUTOR_ID_LOW, EXECUTOR_ID_HIGH);
+	//		startSequenceIsActive = false;
+	//	}
+	//}
+
 	// Read and send sensor data
-	if (((analogRead(REQUEST_DATA)) > 500) && startSequenceIsActive) {
-		if (debugMode) Serial.println("Read sensor data.");
-		if (getAdxlData()) {
-			digitalWrite(REQUEST_DATA_HANDSHAKE, 1);
-			if (debugMode) Serial.println("Load tx buffer.");
-			mcp2515_load_tx_buffer0(ReadBuf, MESSAGE_SIZE_ADXL, EXECUTOR_ID_LOW, EXECUTOR_ID_HIGH);
-			mcp2515_execute_write_command(CONTROL_REGISTER_CANINTF, CONTROL_REGISTER_CANINTF_VALUE_RESET_ALL_IF, CS_PIN_MCP2515);
-			while ((analogRead(REQUEST_DATA)) > 500)
-			{
-			}
-			digitalWrite(REQUEST_DATA_HANDSHAKE, 0);
-			if (debugMode) Serial.println("Finished waiting.");
-		}
-	}
-
-	// Wait for start or stop sequence
-	if (((digitalRead(MCP2515_PIN_INTE_SENDER)) == 0) && ((analogRead(REQUEST_DATA)) < 500) )
-	{
-		byte retVal[2];
-		byte retVal2[8];
-		byte rxStateIst;
-		byte rxStateSoll = 0x03;
-
-		rxStateIst = mcp2515_execute_read_state_command(CS_PIN_MCP2515);
-
-		// Read message to check if it is a start sequence
-		if ((rxStateIst & rxStateSoll) == 1){
-			for (int i = 0; i < 2; i++) retVal[i] = mcp2515_execute_read_command(REGISTER_RXB0Dx[i], CS_PIN_MCP2515);
-		}		
-
-		
-		else if ((rxStateIst & rxStateSoll) == 2) {
-			for (int i = 0; i < 2; i++) retVal[i] = mcp2515_execute_read_command(REGISTER_RXB1Dx[i], CS_PIN_MCP2515);
-		}
-
-		// Check message content
-		if ((retVal[0] == 0xFF) && (retVal[1] == 0xFF)) {
-			// Start sequence received
-			if (debugMode) Serial.println("Receive start sequence. Send handshake.");
-			mcp2515_load_tx_buffer0(retVal, 0x02, EXECUTOR_ID_LOW, EXECUTOR_ID_HIGH);
-			startSequenceIsActive = true;
-		}
-		else if ((retVal[0] == 0x80) && (retVal[1] == 0x80)) {
-			// Stop sequence received
-			if (debugMode) Serial.println("Receive stop sequence. Send handshake.");
-			mcp2515_load_tx_buffer0(retVal, 0x02, EXECUTOR_ID_LOW, EXECUTOR_ID_HIGH);
-			startSequenceIsActive = false;
-		}
-	}
+	//if (startSequenceIsActive) {
+		if (debugMode) Serial.println("Read and send sensor data.");
+		getAdxlData();
+		mcp2515_load_tx_buffer0(ReadBuf, MESSAGE_SIZE_ADXL, EXECUTOR_ID_LOW, EXECUTOR_ID_HIGH);
+		mcp2515_execute_write_command(CONTROL_REGISTER_CANINTF, CONTROL_REGISTER_CANINTF_VALUE_RESET_ALL_IF, CS_PIN_MCP2515);
+	//}
 }
 
 void initAdxl() {
@@ -412,7 +396,7 @@ byte mcp2515_execute_read_command(byte registerToRead, int cs_pin)
 
 	delay(1);
 
-	mcp2515_execute_write_command(CONTROL_REGISTER_CANINTF, CONTROL_REGISTER_CANINTF_VALUE_RESET_ALL_IF, CS_PIN_MCP2515);		
+	mcp2515_execute_write_command(CONTROL_REGISTER_CANINTF, CONTROL_REGISTER_CANINTF_VALUE_RESET_ALL_IF, CS_PIN_MCP2515);
 
 	return returnMessage;
 }
