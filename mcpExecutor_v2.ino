@@ -2,12 +2,8 @@
 
 // TODO Print only in debug mode -> Add input to enable debuging
 
-const int CS_PIN_ADXL = 10;
-const int CS_PIN_MCP2515 = 9;
-const int MCP2515_PIN_INTE_SENDER = 8;
-const int REQUEST_DATA = A0;
-//const int REQUEST_DATA = 4;
-const int REQUEST_DATA_HANDSHAKE = 7;
+const int CS_PIN_ADXL = 4;
+const int CS_PIN_MCP2515 = 8;
 
 // CONTROL REGISTER
 const byte CONTROL_REGISTER_BFPCTRL = 0x0C;
@@ -59,8 +55,6 @@ const byte REGISTER_RXB1D5 = 0x7B;
 const byte REGISTER_RXB1D6 = 0x7C;
 const byte REGISTER_RXB1D7 = 0x7D;
 const byte REGISTER_RXB1Dx[] = { REGISTER_RXB1D0, REGISTER_RXB1D1, REGISTER_RXB1D2, REGISTER_RXB1D3, REGISTER_RXB1D4, REGISTER_RXB1D5, REGISTER_RXB1D6, REGISTER_RXB1D7 };
-const byte REGISTER_TXB0SIDL_VALUE = 0x00;
-const byte REGISTER_TXB0SIDH_VALUE = 0x00; // Identifier for the mcpExecutor
 const byte CONTROL_REGISTER_CANSTAT_NORMAL_MODE = 0x00;
 const byte CONTROL_REGISTER_CANSTAT_SLEEP_MODE = 0x20;
 const byte CONTROL_REGISTER_CANSTAT_LOOPBACK_MODE = 0x40;
@@ -108,8 +102,7 @@ const byte SPI_INSTRUCTION_RX_STATUS = 0xB0;
 const byte SPI_INSTRUCTION_BIT_MODIFY = 0x05;
 
 // DATA FOR MCP2515
-const byte EXECUTOR_ID_LOW = 0x00;
-const byte EXECUTOR_ID_HIGH = 0x00;
+const byte EXECUTOR_ID = 0x01;
 
 // REGISTER ADXL
 const byte ACCEL_REG_POWER_CONTROL = 0x2D;  /* Address of the Power Control register                */
@@ -119,7 +112,7 @@ const byte ACCEL_REG_Y = 0x34; /* Address of the Y Axis data register           
 const byte ACCEL_REG_Z = 0x36; /* Address of the Z Axis data register                  */
 const byte ACCEL_SPI_RW_BIT = 0x80; /* Bit used in SPI transactions to indicate read/write  */
 const byte ACCEL_SPI_MB_BIT = 0x40; /* Bit used to indicate multi-byte SPI transactions     */
-const byte MESSAGE_SIZE_ADXL = 0x06;
+const byte MESSAGE_SIZE_ADXL = 0x07;
 
 // DATA FOR ADXL
 const int ACCEL_RES = 1024;         /* The ADXL345 has 10 bit resolution giving 1024 unique values                     */
@@ -158,7 +151,7 @@ struct Acceleration
 
 double sensorData[3];
 
-byte ReadBuf[6]; // Read buffer of size 6 bytes (2 bytes * 3 axes)
+byte ReadBuf[7]; // Read buffer of size 6 bytes (2 bytes * 3 axes)
 
 const int ADXL = 1;
 const int MCP2515 = 2;
@@ -169,35 +162,34 @@ bool firstStart;
 bool startSequenceIsActive;
 
 byte messageData[] = { 0, 0 };
+int counter = 0;
 
 void setup()
 {
 	// Init variables
 	firstStart = true;
-	startSequenceIsActive = false;
 
 	// USER CONFIGURATION
-	debugMode = false;
+	debugMode = true;
 
 	// Define I/Os
 	pinMode(CS_PIN_ADXL, OUTPUT);
 	pinMode(CS_PIN_MCP2515, OUTPUT); // Set as input to enable pull up resistor. It's neccessary because the ss line is defined at pin 10 + 9
-	pinMode(MCP2515_PIN_INTE_SENDER, INPUT);
-	pinMode(REQUEST_DATA, INPUT);
-	pinMode(REQUEST_DATA_HANDSHAKE, OUTPUT);
+	pinMode(10, OUTPUT); // Set as input to enable pull up resistor. It's neccessary because the ss line is defined at pin 10 + 9
 
 	// Configure I/Os
 	digitalWrite(CS_PIN_ADXL, HIGH);
 	digitalWrite(CS_PIN_MCP2515, HIGH);
-	digitalWrite(REQUEST_DATA_HANDSHAKE, LOW);
+	digitalWrite(10, HIGH);
 
 	// Configure SPI
-	SPI.beginTransaction(SPISettings(5000000, MSBFIRST, SPI_MODE3));
+	SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE3));
 	SPI.begin();
 
 	// Configure ADXL and MCP2515
 	initAdxl();
 	initMcp2515();
+	mcp2515_init_tx_buffer0(EXECUTOR_ID, 0x00, MESSAGE_SIZE_ADXL);
 
 	// Give time to set up
 	delay(100);
@@ -208,59 +200,26 @@ void setup()
 
 void loop()
 {
-	// !!! NOTE -> You need to uncomment the following when there is a solution for the problem:
-	// Cant receive the whole stop sequence from server (txb0ctrl bit is 56 and 24 -> Error while sending...)
-	//// Wait for start or stop sequence
-	//if (((digitalRead(MCP2515_PIN_INTE_SENDER)) == 0))
-	//{
-	//	// Set to false that we can 
-	//	startSequenceIsActive = false;
-
-	//	byte retVal[2];
-	//	byte retVal2[2];
-	//	byte rxStateIst;
-	//	byte rxStateSoll = 0x03;
-
-	//	rxStateIst = mcp2515_execute_read_state_command(CS_PIN_MCP2515);
-
-	//	// Read message to check if it is a start sequence
-	//	if ((rxStateIst & rxStateSoll) == 1) for (int i = 0; i < 2; i++) retVal[i] = mcp2515_execute_read_command(REGISTER_RXB0Dx[i], CS_PIN_MCP2515);
-	//	else if ((rxStateIst & rxStateSoll) == 2) for (int i = 0; i < 2; i++) retVal[i] = mcp2515_execute_read_command(REGISTER_RXB1Dx[i], CS_PIN_MCP2515);
-
-	//	// Check message content
-	//	if ((retVal[0] == 0xFF) && (retVal[1] == 0xFF)) {
-	//		// Start sequence received
-	//		if (debugMode) Serial.println("Receive start sequence. Send handshake.");
-	//		mcp2515_load_tx_buffer0(retVal, 0x02, EXECUTOR_ID_LOW, EXECUTOR_ID_HIGH);
-	//		startSequenceIsActive = true;
-	//	}
-	//	else if ((retVal[0] == 0x80) && (retVal[1] == 0x80)) {
-	//		// Stop sequence received
-	//		if (debugMode) Serial.println("Receive stop sequence. Send handshake.");
-	//		mcp2515_load_tx_buffer0(retVal, 0x02, EXECUTOR_ID_LOW, EXECUTOR_ID_HIGH);
-	//		startSequenceIsActive = false;
-	//	}
+	getAdxlData();
+	//if(counter < 50) counter = counter + 1;
+	//else counter = 0;
+	for (size_t i = 0; i < 7; i++) 	mcp2515_load_tx_buffer0(ReadBuf[i], REGISTER_TXB0Dx[i]);
+	//for (size_t i = 0; i < 6; i++) {
+	//	Serial.print("Buffer0[");
+	//	Serial.print(i);
+	//	Serial.print("]: ");
+	//	Serial.println(mcp2515_execute_read_command(REGISTER_TXB0Dx[i], CS_PIN_MCP2515));
 	//}
-
-	// Read and send sensor data
-	//if (startSequenceIsActive) {
-		if (debugMode) Serial.println("Read and send sensor data.");
-		getAdxlData();
-		mcp2515_load_tx_buffer0(ReadBuf, MESSAGE_SIZE_ADXL, EXECUTOR_ID_LOW, EXECUTOR_ID_HIGH);
-		mcp2515_execute_write_command(CONTROL_REGISTER_CANINTF, CONTROL_REGISTER_CANINTF_VALUE_RESET_ALL_IF, CS_PIN_MCP2515);
-	//}
+	//delay(250);
 }
 
 void initAdxl() {
-	switchDevice(ADXL);
-
 	writeToSpi(ACCEL_REG_DATA_FORMAT, 0x01, CS_PIN_ADXL);
 	writeToSpi(ACCEL_REG_POWER_CONTROL, 0x08, CS_PIN_ADXL);
 }
 
 void initMcp2515() {
 
-	switchDevice(MCP2515);
 	delay(100);
 
 	// Reset chip to set in operation mode
@@ -370,19 +329,12 @@ void mcp2515_switchMode(byte modeToCheck, byte modeToSwitch) {
 	if (debugMode) Serial.println(" succesfully");
 }
 
-boolean waitFor(int cs_pin, int state) {
-	while (digitalRead(cs_pin) == state)
-	{
-	}
-	return true;
-}
-
 byte mcp2515_execute_read_command(byte registerToRead, int cs_pin)
 {
 	byte returnMessage;
 
 	// Enable device
-	digitalWrite(cs_pin, LOW);
+	setCsPin(cs_pin, LOW);
 
 	// Write spi instruction read  
 	SPI.transfer(SPI_INSTRUCTION_READ);
@@ -392,7 +344,7 @@ byte mcp2515_execute_read_command(byte registerToRead, int cs_pin)
 	returnMessage = SPI.transfer(0x00);
 
 	// Disable device
-	digitalWrite(cs_pin, HIGH);
+	setCsPin(cs_pin, HIGH);
 
 	delay(1);
 
@@ -406,14 +358,14 @@ byte mcp2515_execute_read_state_command(int cs_pin)
 	byte returnMessage;
 
 	// Enable device
-	digitalWrite(cs_pin, LOW);
+	setCsPin(cs_pin, LOW);
 
 	// Write spi instruction read  
 	SPI.transfer(SPI_INSTRUCTION_READ_STATUS);
 	returnMessage = SPI.transfer(0x00);
 
 	// Disable device
-	digitalWrite(cs_pin, HIGH);
+	setCsPin(cs_pin, HIGH);
 
 	return returnMessage;
 }
@@ -421,14 +373,15 @@ byte mcp2515_execute_read_state_command(int cs_pin)
 bool getAdxlData() {
 	long startTime = millis();
 
-	switchDevice(ADXL);
-
 	byte RegAddrBuf[] = { ACCEL_REG_X | ACCEL_SPI_RW_BIT | ACCEL_SPI_MB_BIT };
 
-	digitalWrite(CS_PIN_ADXL, LOW);
+	setCsPin(CS_PIN_ADXL, LOW);
 	SPI.transfer(RegAddrBuf[0]);
 	for (int i = 0; i < 6; i++) ReadBuf[i] = SPI.transfer(0x00); // Write 0 value to get data
-	digitalWrite(CS_PIN_ADXL, HIGH);
+	setCsPin(CS_PIN_ADXL, HIGH);
+
+	ReadBuf[6] = EXECUTOR_ID;
+
 
 	return true;
 
@@ -451,31 +404,18 @@ bool getAdxlData() {
 	Serial.println(sensorData[0]);
 	Serial.println(sensorData[1]);
 	Serial.println(sensorData[2]);
-
-	Serial.println("getAdxl: ");
-	Serial.println(millis() - startTime);
 }
 
-void mcp2515_load_tx_buffer0(byte messageData[], byte messageSize, byte identifierLow, byte identifierHigh) {
-	//long startTime = millis();
-
-	switchDevice(MCP2515);
-
-	mcp2515_init_tx_buffer0(identifierLow, identifierHigh, messageSize);
-
-	// Set data (message size of sensor -> 6 bytes) to tx buffer 0
-	for (size_t i = 0; i < messageSize; i++) mcp2515_execute_write_command(REGISTER_TXB0Dx[i], messageData[i], CS_PIN_MCP2515);
+void mcp2515_load_tx_buffer0(byte messageData, byte registerAddress) {
+	mcp2515_execute_write_command(registerAddress, messageData, CS_PIN_MCP2515);
 
 	// Send message
 	mcp2515_execute_rts_command(0);
 
-	//Serial.println("mcp2515_load_tx_buffer0: ");
-	//Serial.println(millis() - startTime);
+	delay(1);
 }
 
 void mcp2515_init_tx_buffer0(byte identifierLow, byte identifierHigh, byte messageSize) {
-
-	switchDevice(MCP2515);
 
 	// Set the message identifier to 10000000000 and extended identifier bit to 0
 	mcp2515_execute_write_command(REGISTER_TXB0SIDL, identifierLow, CS_PIN_MCP2515);
@@ -490,20 +430,25 @@ void mcp2515_init_tx_buffer0(byte identifierLow, byte identifierHigh, byte messa
 void writeToSpi(byte address, byte data, int cs_pin) {
 	byte spiMessage[] = { address, data };
 
-	digitalWrite(cs_pin, LOW);
+	setCsPin(cs_pin, LOW);
 	for (int i = 0; i < 2; i++) SPI.transfer(spiMessage[i]);
-	digitalWrite(cs_pin, HIGH);
+	setCsPin(cs_pin, HIGH);
+}
+
+void setCsPin(int cs_pin, uint8_t value) {
+	digitalWrite(10, value);
+	digitalWrite(cs_pin, value);
 }
 
 void mcp2515_execute_write_command(byte address, byte data, int cs_pin)
 {
 	//long startTime = millis();
 
-	digitalWrite(cs_pin, LOW); // Enable device
+	setCsPin(cs_pin, LOW); // Enable device
 	SPI.transfer(SPI_INSTRUCTION_WRITE); // Write spi instruction write  
 	SPI.transfer(address);
 	SPI.transfer(data);
-	digitalWrite(cs_pin, HIGH); // Disable device
+	setCsPin(cs_pin, HIGH); // Disable device
 
 	//Serial.println("mcp2515_execute_write_command: ");
 	//Serial.println(millis() - startTime);
@@ -532,29 +477,8 @@ void mcp2515_execute_rts_command(int bufferId)
 
 void writeSimpleCommandSpi(byte command, int cs_pin)
 {
-	digitalWrite(cs_pin, LOW);
+	setCsPin(cs_pin, LOW);
 	SPI.transfer(command);
-	digitalWrite(cs_pin, HIGH);
+	setCsPin(cs_pin, HIGH);
 }
 
-void switchDevice(int device) {
-	switch (device)
-	{
-	case ADXL:
-		pinMode(CS_PIN_MCP2515, INPUT);
-		pinMode(CS_PIN_ADXL, OUTPUT);
-		digitalWrite(CS_PIN_ADXL, HIGH);
-		break;
-	case MCP2515:
-		pinMode(CS_PIN_ADXL, INPUT);
-		pinMode(CS_PIN_MCP2515, OUTPUT);
-		digitalWrite(CS_PIN_MCP2515, HIGH);
-		break;
-	case NO_DEVICE:
-		pinMode(CS_PIN_ADXL, INPUT);
-		pinMode(CS_PIN_MCP2515, INPUT);
-		break;
-	default:
-		break;
-	}
-}
