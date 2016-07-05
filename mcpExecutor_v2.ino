@@ -1,9 +1,9 @@
 #include <SPI.h>
 
-// TODO Print only in debug mode -> Add input to enable debuging
 
-const int CS_PIN_ADXL = 4;
+const int CS_PIN_ADXL = 7;
 const int CS_PIN_MCP2515 = 8;
+const byte EXECUTOR_ID = 0x00;
 
 // CONTROL REGISTER
 const byte CONTROL_REGISTER_BFPCTRL = 0x0C;
@@ -11,7 +11,7 @@ const byte CONTROL_REGISTER_TXRTSCTRL = 0x0D;
 const byte CONTROL_REGISTER_CANSTAT = 0x0E;
 const byte CONTROL_REGISTER_CANCTRL = 0x0F;
 const byte CONTROL_REGISTER_TEC = 0x1C;
-const byte CONTROL_REGISTER_REGISTER_REC = 0x1D;
+const byte CONTROL_REGISTER_REC = 0x1D;
 const byte CONTROL_REGISTER_CNF1 = 0x2A;
 const byte CONTROL_REGISTER_CNF2 = 0x29;
 const byte CONTROL_REGISTER_CNF3 = 0x28;
@@ -37,6 +37,33 @@ const byte REGISTER_TXB0D5 = 0x3B;
 const byte REGISTER_TXB0D6 = 0x3C;
 const byte REGISTER_TXB0D7 = 0x3D;
 const byte REGISTER_TXB0Dx[] = { REGISTER_TXB0D0, REGISTER_TXB0D1, REGISTER_TXB0D2, REGISTER_TXB0D3, REGISTER_TXB0D4, REGISTER_TXB0D5, REGISTER_TXB0D6, REGISTER_TXB0D7 };
+
+const byte REGISTER_TXB1SIDH = 0x41;
+const byte REGISTER_TXB1SIDL = 0x42;
+const byte REGISTER_TXB1DLC = 0x45;
+const byte REGISTER_TXB1D0 = 0x46;
+const byte REGISTER_TXB1D1 = 0x47;
+const byte REGISTER_TXB1D2 = 0x48;
+const byte REGISTER_TXB1D3 = 0x49;
+const byte REGISTER_TXB1D4 = 0x4A;
+const byte REGISTER_TXB1D5 = 0x4B;
+const byte REGISTER_TXB1D6 = 0x4C;
+const byte REGISTER_TXB1D7 = 0x4D;
+const byte REGISTER_TXB1Dx[] = { REGISTER_TXB1D0, REGISTER_TXB1D1, REGISTER_TXB1D2, REGISTER_TXB1D3, REGISTER_TXB1D4, REGISTER_TXB1D5, REGISTER_TXB1D6, REGISTER_TXB1D7 };
+
+const byte REGISTER_TXB2SIDH = 0x51;
+const byte REGISTER_TXB2SIDL = 0x52;
+const byte REGISTER_TXB2DLC = 0x55;
+const byte REGISTER_TXB2D0 = 0x56;
+const byte REGISTER_TXB2D1 = 0x57;
+const byte REGISTER_TXB2D2 = 0x58;
+const byte REGISTER_TXB2D3 = 0x59;
+const byte REGISTER_TXB2D4 = 0x5A;
+const byte REGISTER_TXB2D5 = 0x5B;
+const byte REGISTER_TXB2D6 = 0x5C;
+const byte REGISTER_TXB2D7 = 0x5D;
+const byte REGISTER_TXB2Dx[] = { REGISTER_TXB2D0, REGISTER_TXB2D1, REGISTER_TXB2D2, REGISTER_TXB2D3, REGISTER_TXB2D4, REGISTER_TXB2D5, REGISTER_TXB2D6, REGISTER_TXB2D7 };
+
 const byte REGISTER_RXB0D0 = 0x66;
 const byte REGISTER_RXB0D1 = 0x67;
 const byte REGISTER_RXB0D2 = 0x68;
@@ -60,12 +87,14 @@ const byte CONTROL_REGISTER_CANSTAT_SLEEP_MODE = 0x20;
 const byte CONTROL_REGISTER_CANSTAT_LOOPBACK_MODE = 0x40;
 const byte CONTROL_REGISTER_CANSTAT_LISTEN_ONLY_MODE = 0x60;
 const byte CONTROL_REGISTER_CANSTAT_CONFIGURATION_MODE = 0x80;
-const byte CONTROL_REGISTER_CANINTE_INTE = 0x03;
+const byte CONTROL_REGISTER_CANINTE_VALUE = 0x00;
 const byte CONTROL_REGISTER_TXB0CTRL_VALUE = 0x00;
+const byte CONTROL_REGISTER_TXB1CTRL_VALUE = 0x00;
+const byte CONTROL_REGISTER_TXB2CTRL_VALUE = 0x00;
 const byte CONTROL_REGISTER_RXB0CTRL_VALUE = 0x03;
 const byte CONTROL_REGISTER_RXB1CTRL_VALUE = 0x03;
 
-const byte CONTROL_REGISTER_VALUE_CNF1 = 0x02; // Baud rate prescaler calculated with application (Fosc = 8Mhz and CANspeed = 125kHz)
+const byte CONTROL_REGISTER_VALUE_CNF1 = 0x03; // Baud rate prescaler calculated with application (Fosc = 8Mhz and CANspeed = 125kHz)
 const byte CONTROL_REGISTER_VALUE_CNF2 = 0x90; // BTLMODE = 1 (PHaseSegment 2 is configured with CNF 3) and PhaseSegment 1 = 8xTQ (7+1)
 const byte CONTROL_REGISTER_VALUE_CNF3 = 0x02; // Set PhaseSegment 2 = 6xTQ (5+1)
 
@@ -101,9 +130,6 @@ const byte SPI_INSTRUCTION_READ_STATUS = 0xA0;
 const byte SPI_INSTRUCTION_RX_STATUS = 0xB0;
 const byte SPI_INSTRUCTION_BIT_MODIFY = 0x05;
 
-// DATA FOR MCP2515
-const byte EXECUTOR_ID = 0x01;
-
 // REGISTER ADXL
 const byte ACCEL_REG_POWER_CONTROL = 0x2D;  /* Address of the Power Control register                */
 const byte ACCEL_REG_DATA_FORMAT = 0x31;    /* Address of the Data Format register                  */
@@ -125,6 +151,7 @@ const long MAX_WAIT_TIME = 5000;
 const int MAX_ERROR_COUNTER_MODESWITCH = 3;
 bool stopAllOperations = false;
 bool debugMode;
+bool currentTxBuffer[] = { true, false, false };
 
 union acc_x
 {
@@ -163,6 +190,7 @@ bool startSequenceIsActive;
 
 byte messageData[] = { 0, 0 };
 int counter = 0;
+long startTime;
 
 void setup()
 {
@@ -170,7 +198,7 @@ void setup()
 	firstStart = true;
 
 	// USER CONFIGURATION
-	debugMode = true;
+	debugMode = false;
 
 	// Define I/Os
 	pinMode(CS_PIN_ADXL, OUTPUT);
@@ -183,34 +211,66 @@ void setup()
 	digitalWrite(10, HIGH);
 
 	// Configure SPI
-	SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE3));
+	SPI.beginTransaction(SPISettings(5000000, MSBFIRST, SPI_MODE3));
 	SPI.begin();
 
 	// Configure ADXL and MCP2515
 	initAdxl();
 	initMcp2515();
 	mcp2515_init_tx_buffer0(EXECUTOR_ID, 0x00, MESSAGE_SIZE_ADXL);
+	mcp2515_init_tx_buffer1(EXECUTOR_ID, 0x00, MESSAGE_SIZE_ADXL);
+	mcp2515_init_tx_buffer2(EXECUTOR_ID, 0x00, MESSAGE_SIZE_ADXL);
 
 	// Give time to set up
 	delay(100);
 
 	// Start timer to measure the program execution
 	errorTimerValue = millis();
+
+	startTime = millis();
+
+
 }
 
 void loop()
 {
 	getAdxlData();
-	//if(counter < 50) counter = counter + 1;
-	//else counter = 0;
-	for (size_t i = 0; i < 7; i++) 	mcp2515_load_tx_buffer0(ReadBuf[i], REGISTER_TXB0Dx[i]);
-	//for (size_t i = 0; i < 6; i++) {
-	//	Serial.print("Buffer0[");
-	//	Serial.print(i);
-	//	Serial.print("]: ");
-	//	Serial.println(mcp2515_execute_read_command(REGISTER_TXB0Dx[i], CS_PIN_MCP2515));
-	//}
-	//delay(250);
+
+	if (currentTxBuffer[0])
+	{
+		for (size_t i = 0; i < 7; i++) mcp2515_load_tx_buffer(ReadBuf[i], REGISTER_TXB0Dx[i], 0);
+		currentTxBuffer[0] = false;
+		currentTxBuffer[1] = true;
+	}
+	else if (currentTxBuffer[1]) {
+		for (size_t i = 0; i < 7; i++) mcp2515_load_tx_buffer(ReadBuf[i], REGISTER_TXB1Dx[i], 1);
+		currentTxBuffer[1] = false;
+		currentTxBuffer[2] = true;
+	}
+	else if (currentTxBuffer[2]) {
+		for (size_t i = 0; i < 7; i++) mcp2515_load_tx_buffer(ReadBuf[i], REGISTER_TXB2Dx[i], 2);
+		currentTxBuffer[2] = false;
+		currentTxBuffer[0] = true;
+	}
+	//Serial.print("--- CANSTAT---");
+	//Serial.println(mcp2515_execute_read_command(CONTROL_REGISTER_CANSTAT, CS_PIN_MCP2515));
+	//Serial.print("--- CANCTRL---");
+	//Serial.println(mcp2515_execute_read_command(CONTROL_REGISTER_CANCTRL, CS_PIN_MCP2515));
+	//Serial.print("--- TEC---");
+	//Serial.println(mcp2515_execute_read_command(CONTROL_REGISTER_TEC, CS_PIN_MCP2515));
+	//Serial.print("--- REC---");
+	//Serial.println(mcp2515_execute_read_command(CONTROL_REGISTER_REC, CS_PIN_MCP2515));
+	//Serial.print("--- EFLG---");
+	//Serial.println(mcp2515_execute_read_command(CONTROL_REGISTER_EFLG, CS_PIN_MCP2515));	
+	//Serial.print("--- TXB0CTRL---");
+	//Serial.println(mcp2515_execute_read_command(CONTROL_REGISTER_TXB0CTRL, CS_PIN_MCP2515));
+	//Serial.print("--- TXB1CTRL---");
+	//Serial.println(mcp2515_execute_read_command(CONTROL_REGISTER_TXB1CTRL, CS_PIN_MCP2515));
+	//Serial.print("--- TXB2CTRL---");
+	//Serial.println(mcp2515_execute_read_command(CONTROL_REGISTER_TXB2CTRL, CS_PIN_MCP2515));
+	//Serial.println("------");
+	delay(100);
+	
 }
 
 void initAdxl() {
@@ -240,6 +300,10 @@ void initMcp2515() {
 
 	// Set device to normal mode
 	mcp2515_switchMode(CONTROL_REGISTER_CANSTAT_NORMAL_MODE, CONTROL_REGISTER_CANCTRL_NORMAL_MODE);
+	delay(100);
+
+	// Set osm
+	mcp2515_execute_write_command(CONTROL_REGISTER_CANCTRL, 0x08, CS_PIN_MCP2515);
 	delay(100);
 
 	//// Reset all failures
@@ -277,7 +341,7 @@ void mcp2515_configureCanBus() {
 }
 
 void mcp2515_configureInterrupts() {
-	mcp2515_execute_write_command(CONTROL_REGISTER_CANINTE, CONTROL_REGISTER_CANINTE_INTE, CS_PIN_MCP2515);
+	mcp2515_execute_write_command(CONTROL_REGISTER_CANINTE, CONTROL_REGISTER_CANINTE_VALUE, CS_PIN_MCP2515);
 
 	if (debugMode) Serial.println("Mcp2515 configure interrupts succesfully");
 }
@@ -371,7 +435,7 @@ byte mcp2515_execute_read_state_command(int cs_pin)
 }
 
 bool getAdxlData() {
-	long startTime = millis();
+	
 
 	byte RegAddrBuf[] = { ACCEL_REG_X | ACCEL_SPI_RW_BIT | ACCEL_SPI_MB_BIT };
 
@@ -381,36 +445,40 @@ bool getAdxlData() {
 	setCsPin(CS_PIN_ADXL, HIGH);
 
 	ReadBuf[6] = EXECUTOR_ID;
+	//Serial.println(millis() - startTime);
 
 
-	return true;
+	if(!debugMode) return true;
+	else {
 
-	acc_x sensorDataX;
-	sensorDataX.bytes[0] = ReadBuf[0];
-	sensorDataX.bytes[1] = ReadBuf[1];
+		acc_x sensorDataX;
+		sensorDataX.bytes[0] = ReadBuf[0];
+		sensorDataX.bytes[1] = ReadBuf[1];
 
-	acc_y sensorDataY;
-	sensorDataY.bytes[0] = ReadBuf[2];
-	sensorDataY.bytes[1] = ReadBuf[3];
+		acc_y sensorDataY;
+		sensorDataY.bytes[0] = ReadBuf[2];
+		sensorDataY.bytes[1] = ReadBuf[3];
 
-	acc_z sensorDataZ;
-	sensorDataZ.bytes[0] = ReadBuf[4];
-	sensorDataZ.bytes[1] = ReadBuf[5];
+		acc_z sensorDataZ;
+		sensorDataZ.bytes[0] = ReadBuf[4];
+		sensorDataZ.bytes[1] = ReadBuf[5];
 
-	sensorData[0] = (double)sensorDataX.accelerationRawX / UNITS_PER_G;
-	sensorData[1] = (double)sensorDataY.accelerationRawY / UNITS_PER_G;
-	sensorData[2] = (double)sensorDataZ.accelerationRawZ / UNITS_PER_G;
+		sensorData[0] = (double)sensorDataX.accelerationRawX / UNITS_PER_G;
+		sensorData[1] = (double)sensorDataY.accelerationRawY / UNITS_PER_G;
+		sensorData[2] = (double)sensorDataZ.accelerationRawZ / UNITS_PER_G;
 
-	Serial.println(sensorData[0]);
-	Serial.println(sensorData[1]);
-	Serial.println(sensorData[2]);
+		Serial.println(sensorData[0]);
+		Serial.println(sensorData[1]);
+		Serial.println(sensorData[2]);
+		return true;
+	}
 }
 
-void mcp2515_load_tx_buffer0(byte messageData, byte registerAddress) {
+void mcp2515_load_tx_buffer(byte messageData, byte registerAddress, int txBufferId) {
 	mcp2515_execute_write_command(registerAddress, messageData, CS_PIN_MCP2515);
 
 	// Send message
-	mcp2515_execute_rts_command(0);
+	mcp2515_execute_rts_command(txBufferId);
 
 	delay(1);
 }
@@ -425,6 +493,30 @@ void mcp2515_init_tx_buffer0(byte identifierLow, byte identifierHigh, byte messa
 
 	// Set data length and set rtr bit to zero (no remote request)
 	mcp2515_execute_write_command(REGISTER_TXB0DLC, messageSize, CS_PIN_MCP2515);
+}
+
+void mcp2515_init_tx_buffer1(byte identifierLow, byte identifierHigh, byte messageSize) {
+
+	// Set the message identifier to 10000000000 and extended identifier bit to 0
+	mcp2515_execute_write_command(REGISTER_TXB1SIDL, identifierLow, CS_PIN_MCP2515);
+
+	// Set data length and set rtr bit to zero (no remote request)
+	mcp2515_execute_write_command(REGISTER_TXB1SIDH, identifierHigh, CS_PIN_MCP2515);
+
+	// Set data length and set rtr bit to zero (no remote request)
+	mcp2515_execute_write_command(REGISTER_TXB1DLC, messageSize, CS_PIN_MCP2515);
+}
+
+void mcp2515_init_tx_buffer2(byte identifierLow, byte identifierHigh, byte messageSize) {
+
+	// Set the message identifier to 10000000000 and extended identifier bit to 0
+	mcp2515_execute_write_command(REGISTER_TXB2SIDL, identifierLow, CS_PIN_MCP2515);
+
+	// Set data length and set rtr bit to zero (no remote request)
+	mcp2515_execute_write_command(REGISTER_TXB2SIDH, identifierHigh, CS_PIN_MCP2515);
+
+	// Set data length and set rtr bit to zero (no remote request)
+	mcp2515_execute_write_command(REGISTER_TXB2DLC, messageSize, CS_PIN_MCP2515);
 }
 
 void writeToSpi(byte address, byte data, int cs_pin) {
