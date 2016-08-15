@@ -1,9 +1,30 @@
 #include <SPI.h>
 
 // USER DEFINED
-//const byte EXECUTOR_ID = 0x00;
-const byte EXECUTOR_ID = 0x01;
 const int SLOW_DOWN_CODE = 2;
+
+// ---- MCP SETUP BEGIN----
+
+// DEVICE 0
+//const byte EXECUTOR_ID = 0x00;
+//const byte REGISTER_TXB0SIDL_VALUE = 0x20;
+//const byte REGISTER_TXB0SIDH_VALUE = 0x01;
+//const byte REGISTER_TXB1SIDL_VALUE = 0x20;
+//const byte REGISTER_TXB1SIDH_VALUE = 0x01;
+//const byte REGISTER_TXB2SIDL_VALUE = 0x20;
+//const byte REGISTER_TXB2SIDH_VALUE = 0x01;
+
+// DEVICE 1
+const byte EXECUTOR_ID = 0x01;
+const byte REGISTER_TXB0SIDL_VALUE = 0x40;
+const byte REGISTER_TXB0SIDH_VALUE = 0x02;
+const byte REGISTER_TXB1SIDL_VALUE = 0x40;
+const byte REGISTER_TXB1SIDH_VALUE = 0x02;
+const byte REGISTER_TXB2SIDL_VALUE = 0x40;
+const byte REGISTER_TXB2SIDH_VALUE = 0x02;
+
+// ---- MCP SETUP END ----
+
 
 // REGISTER MCP2515
 const byte REGISTER_BFPCTRL = 0x0C;
@@ -154,19 +175,6 @@ const byte REGISTER_RXM0SIDH_VALUE = 0xFF;
 const byte REGISTER_RXM1SIDH_VALUE = 0xFF;
 const byte REGISTER_RXMxSIDH_VALUE[] = { REGISTER_RXM0SIDH_VALUE, REGISTER_RXM1SIDH_VALUE };
 
-const byte REGISTER_TXB0SIDL_VALUE = 0x40; 
-const byte REGISTER_TXB0SIDH_VALUE = 0x02; 
-const byte REGISTER_TXB1SIDL_VALUE = 0x40; 
-const byte REGISTER_TXB1SIDH_VALUE = 0x02; 
-const byte REGISTER_TXB2SIDL_VALUE = 0x40; 
-const byte REGISTER_TXB2SIDH_VALUE = 0x02;
-
-//const byte REGISTER_TXB0SIDL_VALUE = 0x20;
-//const byte REGISTER_TXB0SIDH_VALUE = 0x01;
-//const byte REGISTER_TXB1SIDL_VALUE = 0x20;
-//const byte REGISTER_TXB1SIDH_VALUE = 0x01;
-//const byte REGISTER_TXB2SIDL_VALUE = 0x20;
-//const byte REGISTER_TXB2SIDH_VALUE = 0x01;
 const byte REGISTER_TXBxSIDL_VALUE[] = { REGISTER_TXB0SIDL_VALUE, REGISTER_TXB1SIDL_VALUE, REGISTER_TXB2SIDL_VALUE };
 const byte REGISTER_TXBxSIDH_VALUE[] = { REGISTER_TXB0SIDH_VALUE, REGISTER_TXB1SIDH_VALUE, REGISTER_TXB2SIDH_VALUE };
 
@@ -242,10 +250,11 @@ struct Acceleration
 	double accelZ;
 };
 
-byte testByte = 0x01;
-
 void setup()
 {
+	// Configure serial interface
+	Serial.begin(9600);
+
 	// USER CONFIGURATION
 	debugMode = false;
 
@@ -268,74 +277,21 @@ void setup()
 	initMcp2515();
 
 	// Set identifier, message length, etc.
-	mcp2515_init_tx_buffer0(0x00, 0x00, MESSAGE_SIZE_ADXL);
-	mcp2515_init_tx_buffer1(0x00, 0x00, MESSAGE_SIZE_ADXL);
-	mcp2515_init_tx_buffer2(0x00, 0x00, MESSAGE_SIZE_ADXL);
-	
-	//Serial.println(mcp2515_execute_read_command(REGISTER_TXB0SIDL, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(REGISTER_TXB0SIDH, CS_PIN_MCP2515));
-	//Serial.println("---");
-	//Serial.println(mcp2515_execute_read_command(REGISTER_TXB0SIDL, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(REGISTER_TXB0SIDH, CS_PIN_MCP2515));
-	//Serial.println("---");
-	//Serial.println(mcp2515_execute_read_command(REGISTER_TXB0SIDL, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(REGISTER_TXB0SIDH, CS_PIN_MCP2515));
-	//Serial.println("---");
-
-	// Give time to set up
-	delay(100);
+	mcp2515_init_tx_buffer0(REGISTER_TXBxSIDL_VALUE[0], REGISTER_TXBxSIDH_VALUE[0], MESSAGE_SIZE_ADXL);
+	mcp2515_init_tx_buffer1(REGISTER_TXBxSIDL_VALUE[1], REGISTER_TXBxSIDH_VALUE[1], MESSAGE_SIZE_ADXL);
+	mcp2515_init_tx_buffer2(REGISTER_TXBxSIDL_VALUE[2], REGISTER_TXBxSIDH_VALUE[2], MESSAGE_SIZE_ADXL);
 
 	// Start timer to measure the program execution
 	errorTimerValue = millis();
+
+	// Give time to set up
+	delay(100);
 }
 
 void loop()
 {
-	//long startTime = millis();
 	getAdxlData();
-	//Serial.print("Time 1: ");
-	//Serial.println(millis() - startTime);
-
-	//startTime = millis();
 	for (size_t i = 0; i < MESSAGE_SIZE_ADXL; i++) mcp2515_load_tx_buffer(ReadBuf[i], i, MESSAGE_SIZE_ADXL);
-	//Serial.print("Time 2: ");
-	//Serial.println(millis() - startTime);
-
-	//Serial.print("--- CANSTAT---");
-	//Serial.println(mcp2515_execute_read_command(REGISTER_CANSTAT, CS_PIN_MCP2515));
-	//Serial.print("--- CANCTRL---");
-	//Serial.println(mcp2515_execute_read_command(REGISTER_CANCTRL, CS_PIN_MCP2515));
-	//Serial.print("--- TEC---");
-	//Serial.println(mcp2515_execute_read_command(REGISTER_TEC, CS_PIN_MCP2515));
-	//Serial.print("--- REC---");
-	//Serial.println(mcp2515_execute_read_command(REGISTER_REC, CS_PIN_MCP2515));
-	//Serial.print("--- EFLG---");
-	//Serial.println(mcp2515_execute_read_command(REGISTER_EFLG, CS_PIN_MCP2515));	
-	//Serial.print("--- TXB0CTRL---");
-	//Serial.println(mcp2515_execute_read_command(REGISTER_TXB0CTRL, CS_PIN_MCP2515));
-	//Serial.print("--- TXB1CTRL---");
-	//Serial.println(mcp2515_execute_read_command(REGISTER_TXB1CTRL, CS_PIN_MCP2515));
-	//Serial.print("--- TXB2CTRL---");
-	//Serial.println(mcp2515_execute_read_command(REGISTER_TXB2CTRL, CS_PIN_MCP2515));
-	//Serial.println("------");
-	//for (int i = 0; i < 8; i++) Serial.println(mcp2515_execute_read_command(REGISTER_TXB0Dx[i], CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x60, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x70, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x20, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x21, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x22, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x23, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x24, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x25, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x26, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x27, CS_PIN_MCP2515));
-
-	//Serial.println("------");
-	//Serial.println("------");
-	//for (int i = 0; i < 8; i++) Serial.println(mcp2515_execute_read_command(REGISTER_RXFxSIDH[i], CS_PIN_MCP2515));
-	//Serial.println("------");
-	//delay(100);
-
 }
 
 void mcp2515_init_tx_buffer0(byte identifierLow, byte identifierHigh, byte messageSize) {
@@ -390,107 +346,8 @@ void initMcp2515() {
 	// Configure interrupts
 	mcp2515_configureInterrupts();
 
-	// Configure rx buffer
-	//mcp2515_configureRxBuffer();
-
-	//mcp2515_execute_write_command(0x20, 0x01, CS_PIN_MCP2515);
-	//mcp2515_execute_write_command(0x21, 0x01, CS_PIN_MCP2515);
-	//mcp2515_execute_write_command(0x22, 0x01, CS_PIN_MCP2515);
-	//mcp2515_execute_write_command(0x23, 0x01, CS_PIN_MCP2515);
-	//mcp2515_execute_write_command(0x24, 0x01, CS_PIN_MCP2515);
-	//mcp2515_execute_write_command(0x25, 0x01, CS_PIN_MCP2515);
-	//mcp2515_execute_write_command(0x26, 0x01, CS_PIN_MCP2515);
-	//mcp2515_execute_write_command(0x27, 0x01, CS_PIN_MCP2515);
-
-	//mcp2515_execute_write_command(0x01, 0xE0, CS_PIN_MCP2515);
-	//mcp2515_execute_write_command(0x05, 0xE0, CS_PIN_MCP2515);
-	//mcp2515_execute_write_command(0x09, 0xE0, CS_PIN_MCP2515);
-	//mcp2515_execute_write_command(0x11, 0xE0, CS_PIN_MCP2515);
-	//mcp2515_execute_write_command(0x15, 0xE0, CS_PIN_MCP2515);
-	//mcp2515_execute_write_command(0x19, 0xE0, CS_PIN_MCP2515);
-
-	//mcp2515_execute_write_command(0x00, 0xFF, CS_PIN_MCP2515);
-	//mcp2515_execute_write_command(0x04, 0xFF, CS_PIN_MCP2515);
-	//mcp2515_execute_write_command(0x08, 0xFF, CS_PIN_MCP2515);
-	//mcp2515_execute_write_command(0x10, 0xFF, CS_PIN_MCP2515);
-	//mcp2515_execute_write_command(0x14, 0xFF, CS_PIN_MCP2515);
-	//mcp2515_execute_write_command(0x18, 0xFF, CS_PIN_MCP2515);
-
-	//Serial.println(mcp2515_execute_read_command(0x60, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x70, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x20, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x21, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x22, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x23, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x24, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x25, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x26, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x27, CS_PIN_MCP2515));
-
-	//Serial.println(mcp2515_execute_read_command(0x00, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x04, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x08, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x10, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x14, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x18, CS_PIN_MCP2515));
-
-	//Serial.println(mcp2515_execute_read_command(0x01, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x05, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x09, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x11, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x15, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x19, CS_PIN_MCP2515));
-
-	//delay(500);
-
-
-	//mcp2515_execute_write_command(REGISTER_RXF0SIDH, 0xFF, CS_PIN_MCP2515);
-
-	// Configure filters
-	//for (int i = 0; i < 6; i++) mcp2515_configureMasksFilters(REGISTER_RXFxSIDL[i], REGISTER_RXFxSIDL_VALUE[i]); 
-	//for (int i = 0; i < 6; i++) mcp2515_configureMasksFilters(REGISTER_RXFxSIDH[i], REGISTER_RXFxSIDH_VALUE[i]);
-
-	//// Configure masks
-	//for (int i = 0; i < 2; i++) mcp2515_configureMasksFilters(REGISTER_RXMxSIDL[i], REGISTER_RXMxSIDL_VALUE[i]);
-	//for (int i = 0; i < 2; i++) mcp2515_configureMasksFilters(REGISTER_RXMxSIDH[i], REGISTER_RXMxSIDH_VALUE[i]);
-
-	if (debugMode) Serial.println("Mcp2515 configure masks / filters succesfully");
-
 	// Set device to normal mode
 	mcp2515_switchMode(REGISTER_CANSTAT_NORMAL_MODE, REGISTER_CANCTRL_NORMAL_MODE);
-
-	//Serial.println(mcp2515_execute_read_command(0x60, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x70, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x20, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x21, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x22, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x23, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x24, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x25, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x26, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x27, CS_PIN_MCP2515));
-
-	//Serial.println(mcp2515_execute_read_command(0x00, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x04, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x08, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x10, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x14, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x18, CS_PIN_MCP2515));
-
-	//Serial.println(mcp2515_execute_read_command(0x01, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x05, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x09, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x11, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x15, CS_PIN_MCP2515));
-	//Serial.println(mcp2515_execute_read_command(0x19, CS_PIN_MCP2515));
-
-	//Serial.println("---");
-	//Serial.println(mcp2515_execute_read_state_command(CS_PIN_MCP2515));
-
-	// Set osm
-	//mcp2515_execute_write_command(REGISTER_CANCTRL, 0x08, CS_PIN_MCP2515);
-
-
 }
 
 void mcp2515_execute_reset_command() {
